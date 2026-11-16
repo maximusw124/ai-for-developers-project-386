@@ -35,6 +35,37 @@
   color: var(--color-muted);
 }
 
+.booking-empty {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-muted);
+}
+
+.booking-empty p {
+  margin: 0;
+}
+
+.meeting-type-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+.meeting-type h3 {
+  margin-bottom: var(--space-2);
+  color: var(--color-text);
+  font-size: 1.1rem;
+}
+
+.meeting-type p {
+  margin: 0;
+}
+
+.meeting-type__duration {
+  margin-top: var(--space-2);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
 @media (min-width: 900px) {
   .booking-stub__inner {
     grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);

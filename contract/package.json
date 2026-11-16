@@ -1,0 +1,16 @@
+{
+  "name": "contract",
+  "private": true,
+  "scripts": {
+    "compile": "tsp compile . --warn-as-error",
+    "watch": "tsp compile . --watch"
+  },
+  "dependencies": {
+    "@typespec/http": "1.18.0",
+    "@typespec/openapi": "1.18.0",
+    "@typespec/openapi3": "1.18.0"
+  },
+  "devDependencies": {
+    "@typespec/compiler": "1.18.0"
+  }
+}

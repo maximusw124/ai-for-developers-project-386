@@ -27,6 +27,19 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 
+# Generated API artifacts (rebuilt from contract/openapi/openapi.yaml)
+backend/src/api/generated/
+frontend/src/api/generated/
+
+# Local SQLite data
+backend/data/
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
 # Caches
 .cache/
 .vite/

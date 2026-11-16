@@ -11,6 +11,15 @@
     "indentWidth": 2
   },
   "files": {
-    "ignore": ["node_modules", "dist", ".github"]
+    "ignore": [
+      "node_modules",
+      "dist",
+      ".github",
+      "contract/openapi",
+      "backend/src/api/generated",
+      "frontend/src/api/generated",
+      "playwright-report",
+      "test-results"
+    ]
   }
 }

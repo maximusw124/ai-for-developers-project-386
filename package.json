@@ -1,15 +1,23 @@
 {
   "name": "cal-clone",
   "private": true,
-  "workspaces": ["backend", "frontend"],
+  "workspaces": ["contract", "backend", "frontend"],
   "scripts": {
     "dev": "npm run dev --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
-    "lint": "npx biome check ."
+    "lint": "npx biome check .",
+    "contract:compile": "npm run compile --workspace contract",
+    "contract:lint": "redocly lint contract/openapi/openapi.yaml",
+    "generate": "npm run generate --workspace backend && npm run generate --workspace frontend",
+    "check:contract": "npm run contract:compile && npm run contract:lint && npm run generate && node scripts/check-contract-drift.mjs",
+    "check": "npm run check:contract && npx biome check . && npm run typecheck && npm run build && npm test",
+    "e2e": "npm run generate && playwright test"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4"
+    "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "1.65.1",
+    "@redocly/cli": "2.78.0"
   }
 }

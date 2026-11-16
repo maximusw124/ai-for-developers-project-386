@@ -1,5 +1,5 @@
 [tools]
-node = "22"
+node = "22.18.0"
 
 [tasks.install]
 description = "Установка всех зависимостей"
@@ -10,10 +10,9 @@ description = "Запуск бэкенда и фронтенда"
 run = "npm run dev"
 
 [tasks.check]
-description = "Единая проверка: линтер, типы, сборка и дымовой тест"
-run = """
-npx biome check .
-npm run typecheck
-npm run build
-npm test
-"""
+description = "Единая проверка: контракт, линтер, типы, сборка и тесты"
+run = "npm run check"
+
+[tasks.e2e]
+description = "Сквозной дымовой тест Playwright против настоящего сервера"
+run = "npm run e2e"

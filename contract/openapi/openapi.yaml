@@ -1,0 +1,43 @@
+openapi: 3.1.0
+info:
+  title: Booking API
+  version: 0.0.0
+tags: []
+paths:
+  /meeting-types:
+    get:
+      operationId: listPublicMeetingTypes
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicMeetingType'
+components:
+  schemas:
+    PublicMeetingType:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - durationMin
+      properties:
+        id:
+          type: integer
+          format: int32
+        name:
+          type: string
+        description:
+          type: string
+        durationMin:
+          type: integer
+          format: int32
+servers:
+  - url: http://localhost:3000
+    description: Local development
+    variables: {}
