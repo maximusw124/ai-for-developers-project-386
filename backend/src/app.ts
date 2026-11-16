@@ -187,6 +187,74 @@ export function buildApp({ db }: BuildAppOptions): FastifyInstance {
     },
   );
 
+  app.get<{ Params: { id: string }; Reply: PublicMeetingType | ErrorResponse }>(
+    "/api/meeting-types/:id",
+    async (req, reply) => {
+      const id = parseIdParam(req.params.id);
+      if (id === null)
+        return sendError(reply, 400, invalidRequest("Invalid meeting type id"));
+      try {
+        const row = db
+          .prepare(
+            "SELECT id, name, description, duration_min AS durationMin FROM meeting_types WHERE id = ? AND archived_at_ms IS NULL",
+          )
+          .get(id) as PublicMeetingType | undefined;
+        if (!row)
+          return sendError(reply, 404, notFound("Meeting type not found"));
+        return row;
+      } catch {
+        return sendError(reply, 500, internalError());
+      }
+    },
+  );
+
+  app.get<{ Params: { id: string }; Reply: {} | ErrorResponse }>(
+    "/api/meeting-types/:id/availability",
+    async (req, reply) => {
+      const id = parseIdParam(req.params.id);
+      if (id === null)
+        return sendError(reply, 400, invalidRequest("Invalid meeting type id"));
+      try {
+        const row = db
+          .prepare(
+            "SELECT id FROM meeting_types WHERE id = ? AND archived_at_ms IS NULL",
+          )
+          .get(id) as { id: number } | undefined;
+        if (!row)
+          return sendError(reply, 404, notFound("Meeting type not found"));
+        return {};
+      } catch {
+        return sendError(reply, 500, internalError());
+      }
+    },
+  );
+
+  app.post<{ Params?: unknown; Reply: {} | ErrorResponse }>(
+    "/api/bookings",
+    async (req, reply) => {
+      if (!isRecord(req.body))
+        return sendError(reply, 400, invalidRequest());
+      const meetingTypeId = (req.body as { meetingTypeId?: unknown })
+        .meetingTypeId;
+      if (typeof meetingTypeId !== "number" || !Number.isInteger(meetingTypeId)) {
+        return sendError(reply, 400, invalidRequest());
+      }
+      try {
+        const row = db
+          .prepare("SELECT id, archived_at_ms AS archivedAtMs FROM meeting_types WHERE id = ?")
+          .get(meetingTypeId) as
+          | { id: number; archivedAtMs: number | null }
+          | undefined;
+        if (!row || row.archivedAtMs !== null) {
+          return sendError(reply, 404, notFound("Meeting type not found"));
+        }
+        return sendError(reply, 422, validationError([]));
+      } catch {
+        return sendError(reply, 500, internalError());
+      }
+    },
+  );
+
   app.get<{ Reply: Owner | ErrorResponse }>(
     "/api/admin/owner",
     async (_req, reply) => {
@@ -304,10 +372,21 @@ export function buildApp({ db }: BuildAppOptions): FastifyInstance {
       return sendError(reply, 422, validationError(parsed.fieldErrors));
     try {
       const existing = db
-        .prepare("SELECT id FROM meeting_types WHERE id = ?")
-        .get(id) as { id: number } | undefined;
+        .prepare(
+          "SELECT id, archived_at_ms AS archivedAtMs FROM meeting_types WHERE id = ?",
+        )
+        .get(id) as { id: number; archivedAtMs: number | null } | undefined;
       if (!existing)
         return sendError(reply, 404, notFound("Meeting type not found"));
+      if (existing.archivedAtMs !== null) {
+        return sendError(
+          reply,
+          422,
+          validationError([
+            { field: "meetingType", message: "Archived meeting type is read-only" },
+          ]),
+        );
+      }
       db.prepare(
         "UPDATE meeting_types SET name = ?, description = ?, duration_min = ? WHERE id = ?",
       ).run(
@@ -327,6 +406,66 @@ export function buildApp({ db }: BuildAppOptions): FastifyInstance {
       return sendError(reply, 500, internalError());
     }
   });
+
+  app.post<{ Params: { id: string }; Reply: AdminMeetingType | ErrorResponse }>(
+    "/api/admin/meeting-types/:id/archive",
+    async (req, reply) => {
+      const id = parseIdParam(req.params.id);
+      if (id === null)
+        return sendError(reply, 400, invalidRequest("Invalid meeting type id"));
+      try {
+        const existing = db
+          .prepare(
+            "SELECT id, archived_at_ms AS archivedAtMs FROM meeting_types WHERE id = ?",
+          )
+          .get(id) as { id: number; archivedAtMs: number | null } | undefined;
+        if (!existing)
+          return sendError(reply, 404, notFound("Meeting type not found"));
+        if (existing.archivedAtMs === null) {
+          db.prepare(
+            "UPDATE meeting_types SET archived_at_ms = ? WHERE id = ?",
+          ).run(Date.now(), id);
+        }
+        const row = db
+          .prepare(
+            "SELECT id, name, description, duration_min AS durationMin, archived_at_ms AS archivedAtMs FROM meeting_types WHERE id = ?",
+          )
+          .get(id) as AdminMeetingType | undefined;
+        if (!row) return sendError(reply, 500, internalError());
+        return row;
+      } catch {
+        return sendError(reply, 500, internalError());
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string }; Reply: AdminMeetingType | ErrorResponse }>(
+    "/api/admin/meeting-types/:id/restore",
+    async (req, reply) => {
+      const id = parseIdParam(req.params.id);
+      if (id === null)
+        return sendError(reply, 400, invalidRequest("Invalid meeting type id"));
+      try {
+        const existing = db
+          .prepare("SELECT id FROM meeting_types WHERE id = ?")
+          .get(id) as { id: number } | undefined;
+        if (!existing)
+          return sendError(reply, 404, notFound("Meeting type not found"));
+        db.prepare(
+          "UPDATE meeting_types SET archived_at_ms = NULL WHERE id = ?",
+        ).run(id);
+        const row = db
+          .prepare(
+            "SELECT id, name, description, duration_min AS durationMin, archived_at_ms AS archivedAtMs FROM meeting_types WHERE id = ?",
+          )
+          .get(id) as AdminMeetingType | undefined;
+        if (!row) return sendError(reply, 500, internalError());
+        return row;
+      } catch {
+        return sendError(reply, 500, internalError());
+      }
+    },
+  );
 
   return app;
 }

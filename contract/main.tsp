@@ -1,4 +1,4 @@
-import "@typespec/http";
+﻿import "@typespec/http";
 import "@typespec/openapi";
 
 using Http;
@@ -60,6 +60,66 @@ model UpdateMeetingTypeRequest {
 op listPublicMeetingTypes(): {
   @statusCode statusCode: 200;
   @body body: PublicMeetingType[];
+};
+
+@route("/meeting-types/{id}")
+@get
+@operationId("getPublicMeetingType")
+op getPublicMeetingType(@path id: int32): {
+  @statusCode statusCode: 200;
+  @body body: PublicMeetingType;
+} | {
+  @statusCode statusCode: 400;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 404;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 500;
+  @body body: ErrorResponse;
+};
+
+@route("/meeting-types/{id}/availability")
+@get
+@operationId("getAvailability")
+op getAvailability(@path id: int32): {
+  @statusCode statusCode: 200;
+  @body body: {};
+} | {
+  @statusCode statusCode: 400;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 404;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 500;
+  @body body: ErrorResponse;
+};
+
+@route("/bookings")
+@post
+@operationId("createBooking")
+op createBooking(@body body: {}): {
+  @statusCode statusCode: 201;
+  @body body: {};
+} | {
+  @statusCode statusCode: 400;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 404;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 422;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 409;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 503;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 500;
+  @body body: ErrorResponse;
 };
 
 @route("/admin/owner")
@@ -152,6 +212,40 @@ op updateMeetingType(
   @body body: ErrorResponse;
 } | {
   @statusCode statusCode: 422;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 500;
+  @body body: ErrorResponse;
+};
+
+@route("/admin/meeting-types/{id}/archive")
+@post
+@operationId("archiveMeetingType")
+op archiveMeetingType(@path id: int32): {
+  @statusCode statusCode: 200;
+  @body body: AdminMeetingType;
+} | {
+  @statusCode statusCode: 400;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 404;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 500;
+  @body body: ErrorResponse;
+};
+
+@route("/admin/meeting-types/{id}/restore")
+@post
+@operationId("restoreMeetingType")
+op restoreMeetingType(@path id: int32): {
+  @statusCode statusCode: 200;
+  @body body: AdminMeetingType;
+} | {
+  @statusCode statusCode: 400;
+  @body body: ErrorResponse;
+} | {
+  @statusCode statusCode: 404;
   @body body: ErrorResponse;
 } | {
   @statusCode statusCode: 500;
