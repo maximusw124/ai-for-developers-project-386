@@ -22,4 +22,11 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: "add_archived_at_to_meeting_types",
+    sql: `
+      ALTER TABLE meeting_types ADD COLUMN archived_at_ms INTEGER NULL;
+    `,
+  },
 ];
