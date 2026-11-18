@@ -35,6 +35,7 @@ frontend/src/api/generated/
 backend/data/
 
 # Playwright
+.e2e/
 playwright-report/
 test-results/
 blob-report/

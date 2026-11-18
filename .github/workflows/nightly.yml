@@ -1,0 +1,69 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-browsers:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    env:
+      TZ: Pacific/Kiritimati
+      E2E_TZ: Pacific/Kiritimati
+      E2E_TIMEZONE_ID: Pacific/Kiritimati
+      E2E_PROJECTS: ${{ matrix.browser }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: mise run install
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: npm run e2e -- --retries=1
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-trace-${{ matrix.browser }}
+          path: test-results/
+          retention-days: 7
+
+  e2e-timezone:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      TZ: Pacific/Kiritimati
+      E2E_TZ: Pacific/Kiritimati
+      E2E_TIMEZONE_ID: Pacific/Kiritimati
+      E2E_PROJECTS: chromium
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: mise run install
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e -- --retries=1
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-trace-timezone
+          path: test-results/
+          retention-days: 7
+
+  guards:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      TZ: Pacific/Kiritimati
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: mise run install
+      - run: mise run check
+      - run: mise run test:broken-conflict
+      - run: npm test --workspace backend -- tests/bookingRace.test.ts

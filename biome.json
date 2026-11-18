@@ -13,6 +13,7 @@
   "files": {
     "ignore": [
       "node_modules",
+      ".e2e",
       "dist",
       ".github",
       "contract/openapi",
