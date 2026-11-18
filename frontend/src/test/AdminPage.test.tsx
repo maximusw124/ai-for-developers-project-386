@@ -9,6 +9,8 @@ const api = vi.hoisted(() => ({
   listAdminMeetingTypes: vi.fn(),
   createMeetingType: vi.fn(),
   updateMeetingType: vi.fn(),
+  archiveMeetingType: vi.fn(),
+  restoreMeetingType: vi.fn(),
 }));
 
 vi.mock("../api/generated/sdk.gen", () => api);
@@ -122,5 +124,145 @@ describe("AdminPage", () => {
     expect(screen.getByText("Old")).toBeInTheDocument();
     expect(screen.getByText("Активные")).toBeInTheDocument();
     expect(screen.getByText("Архивные")).toBeInTheDocument();
+  });
+
+  it("shows archived status as text and keeps archived types read-only", async () => {
+    api.listAdminMeetingTypes.mockResolvedValue({
+      data: [
+        {
+          id: 2,
+          name: "Old",
+          description: "Old description",
+          durationMin: 30,
+          archivedAtMs: 1,
+        },
+      ],
+      error: undefined,
+    });
+    renderWithRouter(<AdminPage />, { initialPath: "/admin" });
+
+    expect(await screen.findByText("Old")).toBeInTheDocument();
+    expect(screen.getByText("Архив")).toBeInTheDocument();
+    expect(
+      screen.getByText("Архивный тип нельзя редактировать до восстановления."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Редактировать" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Восстановить" }),
+    ).toBeInTheDocument();
+  });
+
+  it("asks for inline confirmation with warning and manages focus", async () => {
+    api.listAdminMeetingTypes.mockResolvedValue({
+      data: [
+        {
+          id: 1,
+          name: "Active",
+          description: "",
+          durationMin: 30,
+          archivedAtMs: null,
+        },
+      ],
+      error: undefined,
+    });
+    renderWithRouter(<AdminPage />, { initialPath: "/admin" });
+
+    await screen.findByText("Active");
+    fireEvent.click(screen.getByRole("button", { name: "Архивировать" }));
+
+    const warning = screen.getByText(
+      "Тип исчезнет из записи, существующие встречи сохранятся.",
+    );
+    expect(warning).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Подтвердить архивацию" }),
+    ).toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "Отмена" }));
+    expect(
+      screen.queryByRole("button", { name: "Подтвердить архивацию" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Архивировать" }),
+      ).toHaveFocus(),
+    );
+  });
+
+  it("archives a meeting type and announces the result", async () => {
+    api.listAdminMeetingTypes.mockResolvedValue({
+      data: [
+        {
+          id: 1,
+          name: "Active",
+          description: "",
+          durationMin: 30,
+          archivedAtMs: null,
+        },
+      ],
+      error: undefined,
+    });
+    api.archiveMeetingType.mockResolvedValue({
+      data: {
+        id: 1,
+        name: "Active",
+        description: "",
+        durationMin: 30,
+        archivedAtMs: 123,
+      },
+      error: undefined,
+    });
+    renderWithRouter(<AdminPage />, { initialPath: "/admin" });
+
+    await screen.findByText("Active");
+    fireEvent.click(screen.getByRole("button", { name: "Архивировать" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Подтвердить архивацию" }),
+    );
+
+    await waitFor(() =>
+      expect(api.archiveMeetingType).toHaveBeenCalledWith({ path: { id: 1 } }),
+    );
+    expect(
+      await screen.findByText("Тип встречи архивирован"),
+    ).toBeInTheDocument();
+  });
+
+  it("restores an archived meeting type and announces the result", async () => {
+    api.listAdminMeetingTypes.mockResolvedValue({
+      data: [
+        {
+          id: 2,
+          name: "Old",
+          description: "",
+          durationMin: 30,
+          archivedAtMs: 1,
+        },
+      ],
+      error: undefined,
+    });
+    api.restoreMeetingType.mockResolvedValue({
+      data: {
+        id: 2,
+        name: "Old",
+        description: "",
+        durationMin: 30,
+        archivedAtMs: null,
+      },
+      error: undefined,
+    });
+    renderWithRouter(<AdminPage />, { initialPath: "/admin" });
+
+    await screen.findByText("Old");
+    fireEvent.click(screen.getByRole("button", { name: "Восстановить" }));
+
+    await waitFor(() =>
+      expect(api.restoreMeetingType).toHaveBeenCalledWith({ path: { id: 2 } }),
+    );
+    expect(
+      await screen.findByText("Тип встречи восстановлен"),
+    ).toBeInTheDocument();
   });
 });

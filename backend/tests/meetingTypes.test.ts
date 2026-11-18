@@ -107,7 +107,33 @@ describe("Meeting types API", () => {
     expect(got.json().name).toBe("Intro");
   });
 
-  it("updates meeting type and keeps archive state", async () => {
+  it("updates an active meeting type", async () => {
+    const { app, db } = createTestApp();
+    closeApp = async () => {
+      await app.close();
+      db.close();
+    };
+
+    db.prepare(
+      "INSERT INTO meeting_types (id, name, description, duration_min, archived_at_ms) VALUES (1,'Old','d',30,NULL)",
+    ).run();
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/admin/meeting-types/1",
+      payload: { name: "New", description: "", durationMin: 60 },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      id: 1,
+      name: "New",
+      description: "",
+      durationMin: 60,
+      archivedAtMs: null,
+    });
+  });
+
+  it("rejects editing an archived meeting type and keeps it unchanged", async () => {
     const { app, db } = createTestApp();
     closeApp = async () => {
       await app.close();
@@ -123,14 +149,161 @@ describe("Meeting types API", () => {
       url: "/api/admin/meeting-types/1",
       payload: { name: "New", description: "", durationMin: 60 },
     });
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      id: 1,
-      name: "New",
-      description: "",
-      durationMin: 60,
+    expect(response.statusCode).toBe(422);
+    expect(response.json().code).toBe("validation_error");
+
+    const stored = db
+      .prepare(
+        "SELECT name, description, duration_min AS durationMin, archived_at_ms AS archivedAtMs FROM meeting_types WHERE id = 1",
+      )
+      .get();
+    expect(stored).toEqual({
+      name: "Old",
+      description: "d",
+      durationMin: 30,
       archivedAtMs: 999,
     });
+  });
+
+  it("archives and restores a meeting type, hiding it from public endpoints", async () => {
+    const { app, db } = createTestApp();
+    closeApp = async () => {
+      await app.close();
+      db.close();
+    };
+
+    db.prepare(
+      "INSERT INTO meeting_types (id, name, description, duration_min, archived_at_ms) VALUES (1,'Active','desc',30,NULL)",
+    ).run();
+
+    const archived = await app.inject({
+      method: "POST",
+      url: "/api/admin/meeting-types/1/archive",
+    });
+    expect(archived.statusCode).toBe(200);
+    expect(archived.json()).toMatchObject({
+      id: 1,
+      name: "Active",
+      archivedAtMs: expect.any(Number),
+    });
+
+    const publicList = await app.inject({
+      method: "GET",
+      url: "/api/meeting-types",
+    });
+    expect(publicList.json()).toEqual([]);
+
+    const publicType = await app.inject({
+      method: "GET",
+      url: "/api/meeting-types/1",
+    });
+    expect(publicType.statusCode).toBe(404);
+    expect(publicType.json().code).toBe("not_found");
+
+    const availability = await app.inject({
+      method: "GET",
+      url: "/api/meeting-types/1/availability",
+    });
+    expect(availability.statusCode).toBe(404);
+
+    const booking = await app.inject({
+      method: "POST",
+      url: "/api/bookings",
+      payload: { meetingTypeId: 1 },
+    });
+    expect(booking.statusCode).toBe(404);
+
+    const adminType = await app.inject({
+      method: "GET",
+      url: "/api/admin/meeting-types/1",
+    });
+    expect(adminType.statusCode).toBe(200);
+    expect(adminType.json().archivedAtMs).toEqual(expect.any(Number));
+
+    const restored = await app.inject({
+      method: "POST",
+      url: "/api/admin/meeting-types/1/restore",
+    });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json().archivedAtMs).toBeNull();
+
+    const publicListAfter = await app.inject({
+      method: "GET",
+      url: "/api/meeting-types",
+    });
+    expect(publicListAfter.json()).toEqual([
+      { id: 1, name: "Active", description: "desc", durationMin: 30 },
+    ]);
+
+    const publicTypeAfter = await app.inject({
+      method: "GET",
+      url: "/api/meeting-types/1",
+    });
+    expect(publicTypeAfter.statusCode).toBe(200);
+  });
+
+  it("keeps archive idempotent and allows editing after restore", async () => {
+    const { app, db } = createTestApp();
+    closeApp = async () => {
+      await app.close();
+      db.close();
+    };
+
+    db.prepare(
+      "INSERT INTO meeting_types (id, name, description, duration_min, archived_at_ms) VALUES (1,'Active','',30,NULL)",
+    ).run();
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/admin/meeting-types/1/archive",
+    });
+    const archivedAtMs = first.json().archivedAtMs;
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/admin/meeting-types/1/archive",
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().archivedAtMs).toBe(archivedAtMs);
+
+    const restore = await app.inject({
+      method: "POST",
+      url: "/api/admin/meeting-types/1/restore",
+    });
+    expect(restore.statusCode).toBe(200);
+    expect(restore.json().archivedAtMs).toBeNull();
+
+    const update = await app.inject({
+      method: "PATCH",
+      url: "/api/admin/meeting-types/1",
+      payload: { name: "Renamed", description: "", durationMin: 45 },
+    });
+    expect(update.statusCode).toBe(200);
+    expect(update.json().name).toBe("Renamed");
+  });
+
+  it("returns 400 for invalid id and 404 for missing on archive and restore", async () => {
+    const { app, db } = createTestApp();
+    closeApp = async () => {
+      await app.close();
+      db.close();
+    };
+
+    for (const action of ["archive", "restore"]) {
+      const bad = await app.inject({
+        method: "POST",
+        url: `/api/admin/meeting-types/abc/${action}`,
+      });
+      expect(bad.statusCode).toBe(400);
+      expect(bad.json().code).toBe("invalid_request");
+
+      const missing = await app.inject({
+        method: "POST",
+        url: `/api/admin/meeting-types/999/${action}`,
+      });
+      expect(missing.statusCode).toBe(404);
+      expect(missing.json().code).toBe("not_found");
+    }
   });
 
   it("validates meeting type fields and boundaries", async () => {

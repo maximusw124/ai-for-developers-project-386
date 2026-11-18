@@ -3,13 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BookingPage } from "../pages/BookingPage";
 import { renderWithRouter } from "./renderWithRouter";
 
-const { listPublicMeetingTypes } = vi.hoisted(() => ({
+const { listPublicMeetingTypes, getPublicMeetingType } = vi.hoisted(() => ({
   listPublicMeetingTypes: vi.fn(),
+  getPublicMeetingType: vi.fn(),
 }));
 
 vi.mock("../api/generated/sdk.gen", () => ({
   listPublicMeetingTypes: (...args: unknown[]) =>
     listPublicMeetingTypes(...args),
+  getPublicMeetingType: (...args: unknown[]) => getPublicMeetingType(...args),
 }));
 
 describe("BookingPage", () => {

@@ -15,6 +15,8 @@ export type BuildAppOptions = {
   db: Db;
 };
 
+type EmptyResponse = Record<string, never>;
+
 type ValidationResult<T> =
   | { ok: true; value: T }
   | { ok: false; fieldErrors: FieldError[] };
@@ -208,7 +210,7 @@ export function buildApp({ db }: BuildAppOptions): FastifyInstance {
     },
   );
 
-  app.get<{ Params: { id: string }; Reply: {} | ErrorResponse }>(
+  app.get<{ Params: { id: string }; Reply: EmptyResponse | ErrorResponse }>(
     "/api/meeting-types/:id/availability",
     async (req, reply) => {
       const id = parseIdParam(req.params.id);
@@ -229,19 +231,23 @@ export function buildApp({ db }: BuildAppOptions): FastifyInstance {
     },
   );
 
-  app.post<{ Params?: unknown; Reply: {} | ErrorResponse }>(
+  app.post<{ Params?: unknown; Reply: EmptyResponse | ErrorResponse }>(
     "/api/bookings",
     async (req, reply) => {
-      if (!isRecord(req.body))
-        return sendError(reply, 400, invalidRequest());
+      if (!isRecord(req.body)) return sendError(reply, 400, invalidRequest());
       const meetingTypeId = (req.body as { meetingTypeId?: unknown })
         .meetingTypeId;
-      if (typeof meetingTypeId !== "number" || !Number.isInteger(meetingTypeId)) {
+      if (
+        typeof meetingTypeId !== "number" ||
+        !Number.isInteger(meetingTypeId)
+      ) {
         return sendError(reply, 400, invalidRequest());
       }
       try {
         const row = db
-          .prepare("SELECT id, archived_at_ms AS archivedAtMs FROM meeting_types WHERE id = ?")
+          .prepare(
+            "SELECT id, archived_at_ms AS archivedAtMs FROM meeting_types WHERE id = ?",
+          )
           .get(meetingTypeId) as
           | { id: number; archivedAtMs: number | null }
           | undefined;
@@ -383,7 +389,10 @@ export function buildApp({ db }: BuildAppOptions): FastifyInstance {
           reply,
           422,
           validationError([
-            { field: "meetingType", message: "Archived meeting type is read-only" },
+            {
+              field: "meetingType",
+              message: "Archived meeting type is read-only",
+            },
           ]),
         );
       }

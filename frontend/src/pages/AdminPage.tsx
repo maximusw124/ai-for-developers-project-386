@@ -1,9 +1,11 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
 import "../api/client";
 import {
+  archiveMeetingType,
   createMeetingType,
   getOwner,
   listAdminMeetingTypes,
+  restoreMeetingType,
   updateMeetingType,
   updateOwner,
 } from "../api/generated/sdk.gen";
@@ -184,13 +186,26 @@ export function AdminPage() {
   const [types, setTypes] = useState<AdminMeetingType[]>([]);
   const [typesError, setTypesError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [pendingArchiveId, setPendingArchiveId] = useState<number | null>(null);
+  const [busyTypeId, setBusyTypeId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [success, setSuccess] = useState("");
   const successRef = useRef<HTMLParagraphElement>(null);
+  const confirmArchiveRef = useRef<HTMLButtonElement>(null);
+  const archiveTriggerRefs = useRef<Record<number, HTMLButtonElement | null>>(
+    {},
+  );
 
   const announce = (msg: string) => {
     setSuccess(msg);
     setTimeout(() => successRef.current?.focus(), 0);
   };
+
+  useEffect(() => {
+    if (pendingArchiveId !== null) {
+      confirmArchiveRef.current?.focus();
+    }
+  }, [pendingArchiveId]);
 
   const loadOwner = useCallback(async () => {
     try {
@@ -249,6 +264,51 @@ export function AdminPage() {
       setOwnerError("Server error");
     } finally {
       setOwnerBusy(false);
+    }
+  };
+
+  const archiveType = async (id: number) => {
+    setActionError(null);
+    setBusyTypeId(id);
+    try {
+      const res = await archiveMeetingType({ path: { id } });
+      if (res.error) {
+        setActionError((res.error as ErrorResponse).message || "Server error");
+        return;
+      }
+      setPendingArchiveId(null);
+      announce("Тип встречи архивирован");
+      await loadTypes();
+    } catch {
+      setActionError("Server error");
+    } finally {
+      setBusyTypeId(null);
+    }
+  };
+
+  const restoreType = async (id: number) => {
+    setActionError(null);
+    setBusyTypeId(id);
+    try {
+      const res = await restoreMeetingType({ path: { id } });
+      if (res.error) {
+        setActionError((res.error as ErrorResponse).message || "Server error");
+        return;
+      }
+      announce("Тип встречи восстановлен");
+      await loadTypes();
+    } catch {
+      setActionError("Server error");
+    } finally {
+      setBusyTypeId(null);
+    }
+  };
+
+  const cancelArchive = () => {
+    const id = pendingArchiveId;
+    setPendingArchiveId(null);
+    if (id !== null) {
+      setTimeout(() => archiveTriggerRefs.current[id]?.focus(), 0);
     }
   };
 
@@ -318,6 +378,7 @@ export function AdminPage() {
           >
             <h2 id="types-heading">Типы встреч</h2>
             {typesError ? <p role="alert">{typesError}</p> : null}
+            {actionError ? <p role="alert">{actionError}</p> : null}
             <h3>Создать тип встречи</h3>
             <MeetingTypeEditor
               onSaved={(msg) => {
@@ -351,15 +412,67 @@ export function AdminPage() {
                           <div className="admin-type-summary">
                             <strong>{mt.name}</strong>{" "}
                             <span>({mt.durationMin} мин)</span>
+                            <span className="badge status-badge">Активный</span>
                           </div>
                           {mt.description ? <p>{mt.description}</p> : null}
-                          <button
-                            type="button"
-                            className="button button--secondary"
-                            onClick={() => setEditingId(mt.id)}
-                          >
-                            Редактировать
-                          </button>
+                          <div className="admin-type-actions">
+                            <button
+                              type="button"
+                              className="button button--secondary"
+                              onClick={() => setEditingId(mt.id)}
+                              disabled={
+                                pendingArchiveId === mt.id ||
+                                busyTypeId === mt.id
+                              }
+                            >
+                              Редактировать
+                            </button>
+                            {pendingArchiveId === mt.id ? (
+                              <fieldset className="archive-confirm">
+                                <legend
+                                  className="archive-confirm__warning"
+                                  id={`archive-warning-${mt.id}`}
+                                >
+                                  Тип исчезнет из записи, существующие встречи
+                                  сохранятся.
+                                </legend>
+                                <div className="form-actions">
+                                  <button
+                                    type="button"
+                                    ref={confirmArchiveRef}
+                                    className="button button--danger"
+                                    onClick={() => archiveType(mt.id)}
+                                    disabled={busyTypeId === mt.id}
+                                    aria-describedby={`archive-warning-${mt.id}`}
+                                  >
+                                    Подтвердить архивацию
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button--secondary"
+                                    onClick={cancelArchive}
+                                    disabled={busyTypeId === mt.id}
+                                  >
+                                    Отмена
+                                  </button>
+                                </div>
+                              </fieldset>
+                            ) : (
+                              <button
+                                type="button"
+                                ref={(node) => {
+                                  archiveTriggerRefs.current[mt.id] = node;
+                                }}
+                                className="button button--secondary"
+                                onClick={() => {
+                                  setActionError(null);
+                                  setPendingArchiveId(mt.id);
+                                }}
+                              >
+                                Архивировать
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </li>
@@ -375,9 +488,25 @@ export function AdminPage() {
                     <li key={mt.id} className="admin-type-item">
                       <div className="admin-type-summary">
                         <strong>{mt.name}</strong>{" "}
-                        <span>({mt.durationMin} мин, архив)</span>
+                        <span>({mt.durationMin} мин)</span>
+                        <span className="badge status-badge status-badge--archived">
+                          Архив
+                        </span>
                       </div>
                       {mt.description ? <p>{mt.description}</p> : null}
+                      <p className="archive-note">
+                        Архивный тип нельзя редактировать до восстановления.
+                      </p>
+                      <div className="admin-type-actions">
+                        <button
+                          type="button"
+                          className="button button--secondary"
+                          onClick={() => restoreType(mt.id)}
+                          disabled={busyTypeId === mt.id}
+                        >
+                          Восстановить
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
