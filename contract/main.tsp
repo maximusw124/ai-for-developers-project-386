@@ -69,6 +69,26 @@ model UpdateMeetingTypeRequest {
   durationMin: int32;
 }
 
+model CreateBookingRequest {
+  meetingTypeId: int32;
+  start: utcDateTime;
+  guestName: string;
+  guestEmail: string;
+  comment?: string;
+}
+
+model BookingConfirmation {
+  meetingType: PublicMeetingType;
+  start: utcDateTime;
+  end: utcDateTime;
+  durationMin: int32;
+  ownerName: string;
+  guestName: string;
+  guestEmail: string;
+  comment?: string;
+  createdAt: utcDateTime;
+}
+
 @route("/meeting-types")
 @get
 @operationId("listPublicMeetingTypes")
@@ -114,9 +134,9 @@ op getAvailability(@path id: int32): {
 @route("/bookings")
 @post
 @operationId("createBooking")
-op createBooking(@body body: {}): {
+op createBooking(@body body: CreateBookingRequest): {
   @statusCode statusCode: 201;
-  @body body: {};
+  @body body: BookingConfirmation;
 } | {
   @statusCode statusCode: 400;
   @body body: ErrorResponse;

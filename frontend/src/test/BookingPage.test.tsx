@@ -60,6 +60,10 @@ describe("BookingPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Разбор задачи")).toBeInTheDocument();
     expect(screen.getByText("45 мин")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Консультация" })).toHaveAttribute(
+      "href",
+      "/book/1",
+    );
   });
 
   it("shows an error alert when the SDK request fails", async () => {

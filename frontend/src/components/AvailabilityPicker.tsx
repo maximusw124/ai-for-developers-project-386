@@ -17,8 +17,18 @@ const TIME_FORMATTER = new Intl.DateTimeFormat("ru-RU", {
   hour12: false,
 });
 
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ru-RU", {
+  timeZone: "Europe/Moscow",
+  dateStyle: "long",
+  timeStyle: "short",
+});
+
 export function formatMoscowTime(instant: string): string {
   return TIME_FORMATTER.format(new Date(instant));
+}
+
+export function formatMoscowDateTime(instant: string): string {
+  return DATE_TIME_FORMATTER.format(new Date(instant));
 }
 
 export function formatMoscowInterval(slot: Slot): string {

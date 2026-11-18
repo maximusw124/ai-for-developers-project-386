@@ -13,6 +13,7 @@
     "generate": "npm run generate --workspace backend && npm run generate --workspace frontend",
     "check:contract": "npm run contract:compile && npm run contract:lint && npm run generate && node scripts/check-contract-drift.mjs",
     "check": "npm run check:contract && npx biome check . && npm run typecheck && npm run build && npm test",
+    "test:broken-conflict": "node scripts/expect-broken-conflict.mjs",
     "e2e": "npm run generate && playwright test"
   },
   "devDependencies": {

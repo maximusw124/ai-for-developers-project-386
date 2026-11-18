@@ -13,6 +13,14 @@ run = "npm run dev"
 description = "Единая проверка: контракт, линтер, типы, сборка и тесты"
 run = "npm run check"
 
+[tasks.test-broken-conflict]
+description = "Проверка чувствительности теста конфликта к отключённой защите"
+run = "npm run test:broken-conflict"
+
+[tasks."test:broken-conflict"]
+description = "Проверка чувствительности теста конфликта к отключённой защите"
+run = "npm run test:broken-conflict"
+
 [tasks.e2e]
 description = "Сквозной дымовой тест Playwright против настоящего сервера"
 run = "npm run e2e"

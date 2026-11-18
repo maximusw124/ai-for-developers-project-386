@@ -269,7 +269,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/BookingConfirmation'
         '400':
           description: The server could not understand the request due to invalid syntax.
           content:
@@ -311,7 +311,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
+              $ref: '#/components/schemas/CreateBookingRequest'
   /meeting-types:
     get:
       operationId: listPublicMeetingTypes
@@ -433,6 +433,60 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DayAvailability'
+    BookingConfirmation:
+      type: object
+      required:
+        - meetingType
+        - start
+        - end
+        - durationMin
+        - ownerName
+        - guestName
+        - guestEmail
+        - createdAt
+      properties:
+        meetingType:
+          $ref: '#/components/schemas/PublicMeetingType'
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        durationMin:
+          type: integer
+          format: int32
+        ownerName:
+          type: string
+        guestName:
+          type: string
+        guestEmail:
+          type: string
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    CreateBookingRequest:
+      type: object
+      required:
+        - meetingTypeId
+        - start
+        - guestName
+        - guestEmail
+      properties:
+        meetingTypeId:
+          type: integer
+          format: int32
+        start:
+          type: string
+          format: date-time
+        guestName:
+          type: string
+        guestEmail:
+          type: string
+        comment:
+          type: string
     CreateMeetingTypeRequest:
       type: object
       required:

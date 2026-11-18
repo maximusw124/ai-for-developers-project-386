@@ -77,7 +77,11 @@ export function BookingPage() {
               <ul className="meeting-type-list">
                 {state.meetingTypes.map((meetingType) => (
                   <li className="meeting-type" key={meetingType.id}>
-                    <h3>{meetingType.name}</h3>
+                    <h3>
+                      <Link to={`/book/${meetingType.id}`}>
+                        {meetingType.name}
+                      </Link>
+                    </h3>
                     <p>{meetingType.description}</p>
                     <p className="meeting-type__duration">
                       {meetingType.durationMin} мин

@@ -1,7 +1,10 @@
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
+import { DateTime } from "luxon";
 import type {
   AdminMeetingType,
   Availability,
+  BookingConfirmation,
+  CreateBookingRequest,
   CreateMeetingTypeRequest,
   ErrorResponse,
   FieldError,
@@ -18,13 +21,12 @@ import {
   getWindowBounds,
   systemClock,
 } from "./domain/availability.js";
+import { isBookableStart, overlapGuardsDisabled } from "./domain/booking.js";
 
 export type BuildAppOptions = {
   db: Db;
   clock?: Clock;
 };
-
-type EmptyResponse = Record<string, never>;
 
 type ValidationResult<T> =
   | { ok: true; value: T }
@@ -160,6 +162,132 @@ function validateMeetingTypeBody(body: unknown): ValidationResult<{
   };
 }
 
+const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
+type ValidBookingBody = {
+  startMs: number;
+  guestName: string;
+  guestEmail: string;
+  comment?: string;
+};
+
+type BookingOutcome =
+  | { kind: "created"; confirmation: BookingConfirmation }
+  | { kind: "not_found" }
+  | { kind: "slot_unavailable" }
+  | { kind: "slot_taken" };
+
+function slotUnavailable() {
+  return {
+    code: "slot_unavailable",
+    message: "The selected slot is not available",
+  } satisfies ErrorResponse;
+}
+
+function slotTaken() {
+  return {
+    code: "slot_taken",
+    message: "The selected slot is already booked",
+  } satisfies ErrorResponse;
+}
+
+function serviceBusy() {
+  return {
+    code: "service_busy",
+    message: "Booking service is busy, please retry",
+  } satisfies ErrorResponse;
+}
+
+function isSqliteBusy(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === "string" && code.startsWith("SQLITE_BUSY");
+}
+
+function isOverlapError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("booking_overlap");
+}
+
+function validateBookingBody(
+  body: unknown,
+): ValidationResult<ValidBookingBody> {
+  if (!isRecord(body)) {
+    return {
+      ok: false,
+      fieldErrors: [{ field: "start", message: "Invalid request body" }],
+    };
+  }
+
+  const fieldErrors: FieldError[] = [];
+  let startMs = Number.NaN;
+  if (
+    typeof body.start !== "string" ||
+    !UTC_INSTANT.test(body.start) ||
+    !DateTime.fromISO(body.start, { zone: "utc" }).isValid
+  ) {
+    fieldErrors.push({
+      field: "start",
+      message: "Start must be an ISO 8601 UTC instant",
+    });
+  } else {
+    startMs = Date.parse(body.start);
+  }
+
+  let guestName = "";
+  if (typeof body.guestName !== "string") {
+    fieldErrors.push({ field: "guestName", message: "Name is required" });
+  } else {
+    guestName = body.guestName.trim();
+    if (guestName.length < 1 || guestName.length > 100) {
+      fieldErrors.push({
+        field: "guestName",
+        message: "Name must be 1..100 characters",
+      });
+    }
+  }
+
+  let guestEmail = "";
+  if (typeof body.guestEmail !== "string") {
+    fieldErrors.push({ field: "guestEmail", message: "Email is required" });
+  } else {
+    guestEmail = body.guestEmail.trim();
+    if (
+      guestEmail.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)
+    ) {
+      fieldErrors.push({
+        field: "guestEmail",
+        message: "Email must be a valid address",
+      });
+    }
+  }
+
+  let comment: string | undefined;
+  if (body.comment !== undefined) {
+    if (typeof body.comment !== "string") {
+      fieldErrors.push({
+        field: "comment",
+        message: "Comment must be a string",
+      });
+    } else if (body.comment.length > 2000) {
+      fieldErrors.push({
+        field: "comment",
+        message: "Comment must be at most 2000 characters",
+      });
+    } else {
+      comment = body.comment.trim();
+    }
+  }
+
+  if (fieldErrors.length > 0) {
+    return { ok: false, fieldErrors };
+  }
+
+  return {
+    ok: true,
+    value: { startMs, guestName, guestEmail, comment },
+  };
+}
+
 function toAdminMeetingType(row: {
   id: number;
   name: string;
@@ -258,35 +386,127 @@ export function buildApp({
     },
   );
 
-  app.post<{ Params?: unknown; Reply: EmptyResponse | ErrorResponse }>(
-    "/api/bookings",
-    async (req, reply) => {
-      if (!isRecord(req.body)) return sendError(reply, 400, invalidRequest());
-      const meetingTypeId = (req.body as { meetingTypeId?: unknown })
-        .meetingTypeId;
-      if (
-        typeof meetingTypeId !== "number" ||
-        !Number.isInteger(meetingTypeId)
-      ) {
-        return sendError(reply, 400, invalidRequest());
+  app.post<{
+    Body: CreateBookingRequest;
+    Reply: BookingConfirmation | ErrorResponse;
+  }>("/api/bookings", async (req, reply) => {
+    if (!isRecord(req.body)) return sendError(reply, 400, invalidRequest());
+    const meetingTypeId = req.body.meetingTypeId;
+    if (
+      typeof meetingTypeId !== "number" ||
+      !Number.isInteger(meetingTypeId) ||
+      meetingTypeId < 1 ||
+      meetingTypeId > 2147483647
+    ) {
+      return sendError(reply, 400, invalidRequest());
+    }
+
+    try {
+      const existing = db
+        .prepare(
+          "SELECT id, archived_at_ms AS archivedAtMs FROM meeting_types WHERE id = ?",
+        )
+        .get(meetingTypeId) as
+        | { id: number; archivedAtMs: number | null }
+        | undefined;
+      if (!existing || existing.archivedAtMs !== null) {
+        return sendError(reply, 404, notFound("Meeting type not found"));
       }
-      try {
-        const row = db
-          .prepare(
-            "SELECT id, archived_at_ms AS archivedAtMs FROM meeting_types WHERE id = ?",
-          )
-          .get(meetingTypeId) as
-          | { id: number; archivedAtMs: number | null }
-          | undefined;
-        if (!row || row.archivedAtMs !== null) {
-          return sendError(reply, 404, notFound("Meeting type not found"));
-        }
-        return sendError(reply, 422, validationError([]));
-      } catch {
-        return sendError(reply, 500, internalError());
+
+      const parsed = validateBookingBody(req.body);
+      if (!parsed.ok) {
+        return sendError(reply, 422, validationError(parsed.fieldErrors));
       }
-    },
-  );
+
+      const nowMs = clock.now();
+      const outcome = db
+        .transaction((): BookingOutcome => {
+          const meetingType = db
+            .prepare(
+              `SELECT id, name, description, duration_min AS durationMin
+             FROM meeting_types
+             WHERE id = ? AND archived_at_ms IS NULL`,
+            )
+            .get(meetingTypeId) as PublicMeetingType | undefined;
+          if (!meetingType) return { kind: "not_found" };
+
+          const { startMs } = parsed.value;
+          if (!isBookableStart(nowMs, startMs, meetingType.durationMin)) {
+            return { kind: "slot_unavailable" };
+          }
+
+          const endMs = startMs + meetingType.durationMin * 60_000;
+          if (!overlapGuardsDisabled()) {
+            const overlap = db
+              .prepare(
+                "SELECT id FROM bookings WHERE start_ms < ? AND end_ms > ? LIMIT 1",
+              )
+              .get(endMs, startMs);
+            if (overlap) return { kind: "slot_taken" };
+          }
+
+          try {
+            db.prepare(
+              `INSERT INTO bookings
+              (meeting_type_id, start_ms, end_ms, guest_name, guest_email, comment, created_at_ms)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            ).run(
+              meetingTypeId,
+              startMs,
+              endMs,
+              parsed.value.guestName,
+              parsed.value.guestEmail,
+              parsed.value.comment ?? null,
+              nowMs,
+            );
+          } catch (error) {
+            if (isOverlapError(error)) return { kind: "slot_taken" };
+            throw error;
+          }
+
+          const owner = db
+            .prepare(
+              "SELECT display_name AS displayName FROM owner WHERE id = 1",
+            )
+            .get() as Owner | undefined;
+          if (!owner) throw new Error("Owner is missing");
+
+          return {
+            kind: "created",
+            confirmation: {
+              meetingType,
+              start: new Date(startMs).toISOString(),
+              end: new Date(endMs).toISOString(),
+              durationMin: meetingType.durationMin,
+              ownerName: owner.displayName,
+              guestName: parsed.value.guestName,
+              guestEmail: parsed.value.guestEmail,
+              ...(parsed.value.comment !== undefined
+                ? { comment: parsed.value.comment }
+                : {}),
+              createdAt: new Date(nowMs).toISOString(),
+            },
+          };
+        })
+        .immediate();
+
+      if (outcome.kind === "not_found") {
+        return sendError(reply, 404, notFound("Meeting type not found"));
+      }
+      if (outcome.kind === "slot_unavailable") {
+        return sendError(reply, 422, slotUnavailable());
+      }
+      if (outcome.kind === "slot_taken") {
+        return sendError(reply, 409, slotTaken());
+      }
+      return reply.code(201).send(outcome.confirmation);
+    } catch (error) {
+      if (isSqliteBusy(error)) {
+        return sendError(reply, 503, serviceBusy());
+      }
+      return sendError(reply, 500, internalError());
+    }
+  });
 
   app.get<{ Reply: Owner | ErrorResponse }>(
     "/api/admin/owner",
