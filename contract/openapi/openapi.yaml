@@ -4,6 +4,25 @@ info:
   version: 0.0.0
 tags: []
 paths:
+  /admin/bookings/upcoming:
+    get:
+      operationId: listUpcomingBookings
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UpcomingBooking'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/meeting-types:
     get:
       operationId: listAdminMeetingTypes
@@ -574,6 +593,58 @@ components:
         end:
           type: string
           format: date-time
+    UpcomingBooking:
+      type: object
+      required:
+        - id
+        - start
+        - end
+        - guestName
+        - guestEmail
+        - comment
+        - createdAt
+        - meetingType
+      properties:
+        id:
+          type: integer
+          format: int32
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        guestName:
+          type: string
+        guestEmail:
+          type: string
+        comment:
+          anyOf:
+            - type: string
+            - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+        meetingType:
+          $ref: '#/components/schemas/UpcomingMeetingType'
+    UpcomingMeetingType:
+      type: object
+      required:
+        - id
+        - name
+        - durationMin
+        - archived
+      properties:
+        id:
+          type: integer
+          format: int32
+        name:
+          type: string
+        durationMin:
+          type: integer
+          format: int32
+        archived:
+          type: boolean
     UpdateMeetingTypeRequest:
       type: object
       required:

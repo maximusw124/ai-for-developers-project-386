@@ -10,6 +10,7 @@ import type {
   FieldError,
   Owner,
   PublicMeetingType,
+  UpcomingBooking,
   UpdateMeetingTypeRequest,
   UpdateOwnerRequest,
 } from "./api/generated/types.gen.js";
@@ -507,6 +508,60 @@ export function buildApp({
       return sendError(reply, 500, internalError());
     }
   });
+
+  app.get<{ Reply: UpcomingBooking[] | ErrorResponse }>(
+    "/api/admin/bookings/upcoming",
+    async (_req, reply) => {
+      try {
+        const rows = db
+          .prepare(
+            `SELECT b.id, b.start_ms AS startMs, b.end_ms AS endMs,
+                    b.guest_name AS guestName, b.guest_email AS guestEmail,
+                    b.comment, b.created_at_ms AS createdAtMs,
+                    mt.id AS meetingTypeId, mt.name AS meetingTypeName,
+                    mt.duration_min AS meetingTypeDurationMin,
+                    mt.archived_at_ms AS archivedAtMs
+             FROM bookings AS b
+             JOIN meeting_types AS mt ON mt.id = b.meeting_type_id
+             WHERE b.end_ms > ?
+             ORDER BY b.start_ms ASC, b.id ASC`,
+          )
+          .all(clock.now()) as Array<{
+          id: number;
+          startMs: number;
+          endMs: number;
+          guestName: string;
+          guestEmail: string;
+          comment: string | null;
+          createdAtMs: number;
+          meetingTypeId: number;
+          meetingTypeName: string;
+          meetingTypeDurationMin: number;
+          archivedAtMs: number | null;
+        }>;
+
+        return rows.map(
+          (row): UpcomingBooking => ({
+            id: row.id,
+            start: new Date(row.startMs).toISOString(),
+            end: new Date(row.endMs).toISOString(),
+            guestName: row.guestName,
+            guestEmail: row.guestEmail,
+            comment: row.comment,
+            createdAt: new Date(row.createdAtMs).toISOString(),
+            meetingType: {
+              id: row.meetingTypeId,
+              name: row.meetingTypeName,
+              durationMin: row.meetingTypeDurationMin,
+              archived: row.archivedAtMs !== null,
+            },
+          }),
+        );
+      } catch {
+        return sendError(reply, 500, internalError());
+      }
+    },
+  );
 
   app.get<{ Reply: Owner | ErrorResponse }>(
     "/api/admin/owner",

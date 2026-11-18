@@ -89,6 +89,24 @@ model BookingConfirmation {
   createdAt: utcDateTime;
 }
 
+model UpcomingMeetingType {
+  id: int32;
+  name: string;
+  durationMin: int32;
+  archived: boolean;
+}
+
+model UpcomingBooking {
+  id: int32;
+  start: utcDateTime;
+  end: utcDateTime;
+  guestName: string;
+  guestEmail: string;
+  comment: string | null;
+  createdAt: utcDateTime;
+  meetingType: UpcomingMeetingType;
+}
+
 @route("/meeting-types")
 @get
 @operationId("listPublicMeetingTypes")
@@ -157,10 +175,22 @@ op createBooking(@body body: CreateBookingRequest): {
   @body body: ErrorResponse;
 };
 
+@route("/admin/bookings/upcoming")
+@get
+@operationId("listUpcomingBookings")
+op listUpcomingBookings(): {
+  @statusCode statusCode: 200;
+  @body body: UpcomingBooking[];
+} | {
+  @statusCode statusCode: 500;
+  @body body: ErrorResponse;
+};
+
 @route("/admin/owner")
 @get
 @operationId("getOwner")
 op getOwner(): {
+
   @statusCode statusCode: 200;
   @body body: Owner;
 } | {

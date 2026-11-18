@@ -5,6 +5,7 @@ import {
   createMeetingType,
   getOwner,
   listAdminMeetingTypes,
+  listUpcomingBookings,
   restoreMeetingType,
   updateMeetingType,
   updateOwner,
@@ -12,7 +13,12 @@ import {
 import type {
   AdminMeetingType,
   ErrorResponse,
+  UpcomingBooking,
 } from "../api/generated/types.gen";
+import {
+  formatMoscowDateTime,
+  formatMoscowInterval,
+} from "../components/AvailabilityPicker";
 import { SiteLayout } from "../components/SiteLayout";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import "./AdminPage.css";
@@ -45,6 +51,60 @@ function toFormState(mt?: AdminMeetingType): MeetingTypeFormState {
     durationMin: mt ? String(mt.durationMin) : "30",
   };
 }
+
+const MOSCOW_DATE_KEY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Moscow",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const MOSCOW_DATE_FORMATTER = new Intl.DateTimeFormat("ru-RU", {
+  timeZone: "UTC",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+function moscowDateKey(instant: string): string {
+  const parts = MOSCOW_DATE_KEY_FORMATTER.formatToParts(new Date(instant));
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function formatMoscowDate(instant: string): string {
+  return MOSCOW_DATE_FORMATTER.format(
+    new Date(`${moscowDateKey(instant)}T00:00:00.000Z`),
+  );
+}
+
+function groupByMoscowDate(bookings: UpcomingBooking[]): Array<{
+  date: string;
+  bookings: UpcomingBooking[];
+}> {
+  const groups = new Map<string, UpcomingBooking[]>();
+  for (const booking of bookings) {
+    const date = moscowDateKey(booking.start);
+    const group = groups.get(date);
+    if (group) group.push(booking);
+    else groups.set(date, [booking]);
+  }
+  return Array.from(groups, ([date, items]) => ({
+    date,
+    bookings: items,
+  })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function isOngoing(booking: UpcomingBooking, nowMs = Date.now()): boolean {
+  return Date.parse(booking.start) <= nowMs && Date.parse(booking.end) > nowMs;
+}
+
+type UpcomingState =
+  | { status: "loading" }
+  | { status: "ready"; bookings: UpcomingBooking[] }
+  | { status: "error"; message: string };
 
 function MeetingTypeEditor({
   meetingType,
@@ -189,6 +249,10 @@ export function AdminPage() {
   const [pendingArchiveId, setPendingArchiveId] = useState<number | null>(null);
   const [busyTypeId, setBusyTypeId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [upcomingState, setUpcomingState] = useState<UpcomingState>({
+    status: "loading",
+  });
+  const [upcomingUpdating, setUpcomingUpdating] = useState(false);
   const [success, setSuccess] = useState("");
   const successRef = useRef<HTMLParagraphElement>(null);
   const confirmArchiveRef = useRef<HTMLButtonElement>(null);
@@ -236,10 +300,33 @@ export function AdminPage() {
     }
   }, []);
 
+  const loadUpcoming = useCallback(async () => {
+    setUpcomingUpdating(true);
+    try {
+      const res = await listUpcomingBookings();
+      if (res.error) {
+        setUpcomingState({
+          status: "error",
+          message: (res.error as ErrorResponse).message || "Server error",
+        });
+        return;
+      }
+      setUpcomingState({ status: "ready", bookings: res.data ?? [] });
+    } catch {
+      setUpcomingState({ status: "error", message: "Server error" });
+    } finally {
+      setUpcomingUpdating(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadOwner();
     loadTypes();
   }, [loadOwner, loadTypes]);
+
+  useEffect(() => {
+    loadUpcoming();
+  }, [loadUpcoming]);
 
   const saveOwner = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -511,6 +598,107 @@ export function AdminPage() {
                   ))}
                 </ul>
               </>
+            ) : null}
+          </section>
+
+          <section
+            aria-labelledby="upcoming-heading"
+            className="admin-section card"
+          >
+            <div className="admin-section-heading">
+              <h2 id="upcoming-heading">Предстоящие встречи</h2>
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => loadUpcoming()}
+                disabled={upcomingUpdating}
+              >
+                Обновить
+              </button>
+            </div>
+            <p className="timezone-hint">Время по Москве</p>
+            {upcomingState.status === "error" && !upcomingUpdating ? (
+              <div role="alert" className="form-alert">
+                <p>{upcomingState.message}</p>
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  onClick={() => loadUpcoming()}
+                >
+                  Повторить
+                </button>
+              </div>
+            ) : null}
+            {upcomingState.status === "loading" || upcomingUpdating ? (
+              <output className="upcoming-skeletons">
+                <p className="visually-live">Загрузка встреч…</p>
+                <span className="skeleton-row" aria-hidden="true" />
+                <span className="skeleton-row" aria-hidden="true" />
+                <span className="skeleton-row" aria-hidden="true" />
+              </output>
+            ) : null}
+            {upcomingState.status === "ready" && !upcomingUpdating ? (
+              upcomingState.bookings.length === 0 ? (
+                <p>
+                  Предстоящих встреч нет. Когда гости запишутся, встречи
+                  появятся здесь
+                </p>
+              ) : (
+                groupByMoscowDate(upcomingState.bookings).map((group) => (
+                  <div key={group.date} className="booking-group">
+                    <h3>{formatMoscowDate(group.bookings[0].start)}</h3>
+                    <ul className="booking-list">
+                      {group.bookings.map((booking) => (
+                        <li key={booking.id} className="booking-card">
+                          <div className="booking-card__heading">
+                            <strong>{booking.meetingType.name}</strong>
+                            <span>
+                              {formatMoscowInterval({
+                                start: booking.start,
+                                end: booking.end,
+                              })}
+                            </span>
+                            {isOngoing(booking) ? (
+                              <span className="badge status-badge status-badge--now">
+                                Сейчас
+                              </span>
+                            ) : null}
+                            {booking.meetingType.archived ? (
+                              <span className="badge status-badge status-badge--archived">
+                                Тип в архиве
+                              </span>
+                            ) : null}
+                          </div>
+                          <dl className="booking-card__details">
+                            <div>
+                              <dt>Гость</dt>
+                              <dd>{booking.guestName}</dd>
+                            </div>
+                            <div>
+                              <dt>Email</dt>
+                              <dd>
+                                <a href={`mailto:${booking.guestEmail}`}>
+                                  {booking.guestEmail}
+                                </a>
+                              </dd>
+                            </div>
+                            {booking.comment ? (
+                              <div>
+                                <dt>Комментарий</dt>
+                                <dd>{booking.comment}</dd>
+                              </div>
+                            ) : null}
+                            <div>
+                              <dt>Создана</dt>
+                              <dd>{formatMoscowDateTime(booking.createdAt)}</dd>
+                            </div>
+                          </dl>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))
+              )
             ) : null}
           </section>
         </div>
