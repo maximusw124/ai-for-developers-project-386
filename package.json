@@ -1,12 +1,14 @@
 {
   "name": "cal-clone",
+  "version": "0.0.0",
   "private": true,
   "workspaces": ["contract", "backend", "frontend"],
   "scripts": {
     "dev": "npm run dev --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test --workspaces --if-present",
+    "test": "npm run test:release && npm test --workspaces --if-present",
+    "test:release": "node --test tests/release-config.test.mjs",
     "lint": "npx biome check .",
     "contract:compile": "npm run compile --workspace contract",
     "contract:lint": "redocly lint contract/openapi/openapi.yaml",

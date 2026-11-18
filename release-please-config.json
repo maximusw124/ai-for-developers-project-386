@@ -1,0 +1,27 @@
+{
+  "bootstrap-sha": "bef3dbc1d281d604106a922d5cf3cbb4cbcd860d",
+  "release-type": "node",
+  "packages": {
+    ".": {
+      "package-name": "cal-clone",
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "bump-minor-pre-major": true,
+      "draft": false
+    }
+  },
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "chore", "hidden": true },
+    { "type": "test", "hidden": true },
+    { "type": "refactor", "hidden": true },
+    { "type": "ci", "hidden": true },
+    { "type": "perf", "hidden": true },
+    { "type": "build", "hidden": true },
+    { "type": "style", "hidden": true },
+    { "type": "revert", "hidden": true }
+  ]
+}
