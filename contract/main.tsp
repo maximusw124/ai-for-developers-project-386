@@ -34,6 +34,21 @@ model UpdateOwnerRequest {
   displayName: string;
 }
 
+model Slot {
+  start: utcDateTime;
+  end: utcDateTime;
+}
+
+model DayAvailability {
+  date: plainDate;
+  slots: Slot[];
+}
+
+model Availability {
+  meetingType: PublicMeetingType;
+  days: DayAvailability[];
+}
+
 model AdminMeetingType {
   id: int32;
   name: string;
@@ -84,7 +99,7 @@ op getPublicMeetingType(@path id: int32): {
 @operationId("getAvailability")
 op getAvailability(@path id: int32): {
   @statusCode statusCode: 200;
-  @body body: {};
+  @body body: Availability;
 } | {
   @statusCode statusCode: 400;
   @body body: ErrorResponse;

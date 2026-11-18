@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { ensureOwner, openDatabase, runMigrations } from "./db/index.js";
+import { systemClock } from "./domain/availability.js";
 
 const config = loadConfig();
 
@@ -14,7 +15,11 @@ const db = openDatabase(config.databasePath);
 runMigrations(db);
 ensureOwner(db, config.ownerName);
 
-const app = buildApp({ db });
+const { fixedNowMs } = config;
+const clock =
+  fixedNowMs === undefined ? systemClock : { now: () => fixedNowMs };
+
+const app = buildApp({ db, clock });
 
 app.addHook("onClose", async () => {
   db.close();

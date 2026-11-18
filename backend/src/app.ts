@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import type {
   AdminMeetingType,
+  Availability,
   CreateMeetingTypeRequest,
   ErrorResponse,
   FieldError,
@@ -10,9 +11,17 @@ import type {
   UpdateOwnerRequest,
 } from "./api/generated/types.gen.js";
 import type { Db } from "./db/index.js";
+import {
+  type BusyInterval,
+  type Clock,
+  buildSlots,
+  getWindowBounds,
+  systemClock,
+} from "./domain/availability.js";
 
 export type BuildAppOptions = {
   db: Db;
+  clock?: Clock;
 };
 
 type EmptyResponse = Record<string, never>;
@@ -161,7 +170,10 @@ function toAdminMeetingType(row: {
   return row;
 }
 
-export function buildApp({ db }: BuildAppOptions): FastifyInstance {
+export function buildApp({
+  db,
+  clock = systemClock,
+}: BuildAppOptions): FastifyInstance {
   const app = Fastify({ logger: false });
 
   app.get("/api/health", async () => {
@@ -210,21 +222,36 @@ export function buildApp({ db }: BuildAppOptions): FastifyInstance {
     },
   );
 
-  app.get<{ Params: { id: string }; Reply: EmptyResponse | ErrorResponse }>(
+  app.get<{ Params: { id: string }; Reply: Availability | ErrorResponse }>(
     "/api/meeting-types/:id/availability",
     async (req, reply) => {
       const id = parseIdParam(req.params.id);
       if (id === null)
         return sendError(reply, 400, invalidRequest("Invalid meeting type id"));
       try {
-        const row = db
+        const meetingType = db
           .prepare(
-            "SELECT id FROM meeting_types WHERE id = ? AND archived_at_ms IS NULL",
+            "SELECT id, name, description, duration_min AS durationMin FROM meeting_types WHERE id = ? AND archived_at_ms IS NULL",
           )
-          .get(id) as { id: number } | undefined;
-        if (!row)
+          .get(id) as PublicMeetingType | undefined;
+        if (!meetingType)
           return sendError(reply, 404, notFound("Meeting type not found"));
-        return {};
+
+        const nowMs = clock.now();
+        const { windowStartMs, windowEndMs } = getWindowBounds(nowMs);
+        const busy = db
+          .prepare(
+            `SELECT start_ms AS startMs, end_ms AS endMs
+             FROM bookings
+             WHERE start_ms < ? AND end_ms > ?
+             ORDER BY start_ms`,
+          )
+          .all(windowEndMs, windowStartMs) as BusyInterval[];
+
+        return {
+          meetingType,
+          days: buildSlots(nowMs, meetingType.durationMin, busy),
+        };
       } catch {
         return sendError(reply, 500, internalError());
       }
@@ -433,7 +460,7 @@ export function buildApp({ db }: BuildAppOptions): FastifyInstance {
         if (existing.archivedAtMs === null) {
           db.prepare(
             "UPDATE meeting_types SET archived_at_ms = ? WHERE id = ?",
-          ).run(Date.now(), id);
+          ).run(clock.now(), id);
         }
         const row = db
           .prepare(

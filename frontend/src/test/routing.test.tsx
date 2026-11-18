@@ -9,6 +9,7 @@ vi.mock("../api/generated/sdk.gen", () => ({
     error: undefined,
   }),
   getPublicMeetingType: vi.fn(),
+  getAvailability: vi.fn(),
 }));
 
 describe("App routing", () => {

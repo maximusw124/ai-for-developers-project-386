@@ -17,6 +17,7 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: "http://127.0.0.1:5173",
+    timezoneId: "America/New_York",
     trace: "retain-on-failure",
   },
   projects: [
@@ -35,6 +36,8 @@ export default defineConfig({
         DATABASE_PATH: databasePath,
         OWNER_NAME: "Владелец",
         PORT: "3000",
+        FIXED_NOW: "2026-11-16T05:00:00.000Z",
+        TZ: "UTC",
       },
     },
     {

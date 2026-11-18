@@ -1,18 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import "../api/client";
-import { getPublicMeetingType } from "../api/generated/sdk.gen";
+import { getAvailability } from "../api/generated/sdk.gen";
 import type {
+  Availability,
   ErrorResponse,
-  PublicMeetingType,
+  Slot,
 } from "../api/generated/types.gen";
+import {
+  AvailabilityPicker,
+  formatMoscowInterval,
+} from "../components/AvailabilityPicker";
 import { SiteLayout } from "../components/SiteLayout";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import "./BookingPage.css";
 
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; meetingType: PublicMeetingType }
+  | { status: "ready"; availability: Availability }
   | { status: "not_found" }
   | { status: "error" };
 
@@ -27,6 +32,7 @@ export function BookingTypePage() {
   useDocumentTitle("Запись на встречу — Календарь звонков");
   const { meetingTypeId } = useParams();
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [selectedSlot, setSelectedSlot] = useState<Slot>();
 
   useEffect(() => {
     let isActive = true;
@@ -38,7 +44,8 @@ export function BookingTypePage() {
     }
 
     setState({ status: "loading" });
-    getPublicMeetingType({ path: { id } })
+    setSelectedSlot(undefined);
+    getAvailability({ path: { id } })
       .then(({ data, error }) => {
         if (!isActive) {
           return;
@@ -57,7 +64,7 @@ export function BookingTypePage() {
           return;
         }
 
-        setState({ status: "ready", meetingType: data });
+        setState({ status: "ready", availability: data });
       })
       .catch(() => {
         if (isActive) {
@@ -86,7 +93,7 @@ export function BookingTypePage() {
           </div>
           <div className="card booking-stub__card">
             {state.status === "loading" ? (
-              <output>Загружаем тип встречи…</output>
+              <output>Загружаем доступные слоты…</output>
             ) : null}
             {state.status === "not_found" ? (
               <div className="booking-empty">
@@ -98,16 +105,26 @@ export function BookingTypePage() {
             ) : null}
             {state.status === "error" ? (
               <p role="alert">
-                Не удалось загрузить тип встречи. Обновите страницу.
+                Не удалось загрузить доступные слоты. Обновите страницу.
               </p>
             ) : null}
             {state.status === "ready" ? (
               <div>
-                <h2>{state.meetingType.name}</h2>
-                <p>{state.meetingType.description}</p>
+                <h2>{state.availability.meetingType.name}</h2>
+                <p>{state.availability.meetingType.description}</p>
                 <p className="meeting-type__duration">
-                  {state.meetingType.durationMin} мин
+                  {state.availability.meetingType.durationMin} мин
                 </p>
+                <AvailabilityPicker
+                  days={state.availability.days}
+                  selectedSlotStart={selectedSlot?.start}
+                  onSelectSlot={setSelectedSlot}
+                />
+                {selectedSlot ? (
+                  <output className="availability__selected">
+                    Выбран слот: {formatMoscowInterval(selectedSlot)}
+                  </output>
+                ) : null}
               </div>
             ) : null}
           </div>
