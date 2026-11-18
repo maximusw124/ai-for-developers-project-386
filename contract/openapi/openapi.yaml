@@ -376,7 +376,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/Availability'
         '400':
           description: The server could not understand the request due to invalid syntax.
           content:
@@ -421,6 +421,18 @@ components:
             - type: integer
               format: int64
             - type: 'null'
+    Availability:
+      type: object
+      required:
+        - meetingType
+        - days
+      properties:
+        meetingType:
+          $ref: '#/components/schemas/PublicMeetingType'
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayAvailability'
     CreateMeetingTypeRequest:
       type: object
       required:
@@ -434,6 +446,19 @@ components:
         durationMin:
           type: integer
           format: int32
+    DayAvailability:
+      type: object
+      required:
+        - date
+        - slots
+      properties:
+        date:
+          type: string
+          format: date
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/Slot'
     ErrorResponse:
       type: object
       required:
@@ -483,6 +508,18 @@ components:
         durationMin:
           type: integer
           format: int32
+    Slot:
+      type: object
+      required:
+        - start
+        - end
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
     UpdateMeetingTypeRequest:
       type: object
       required:
