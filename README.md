@@ -39,6 +39,49 @@ cd ai-for-developers-project-386
 # Установите зависимости и настройте проект согласно инструкциям курса
 ```
 
+## 🌐 Развёртывание (Render)
+
+Публичная ссылка: https://booking-app-5ssp.onrender.com
+
+Образ собирается из корневого `Dockerfile`: multi-stage сборка контракта, генерация API-клиентов, сборка фронтенда и бэкенда. Финальный контейнер запускает `node backend/dist/index.js` и раздаёт SPA и API с одного порта. Render задаёт переменную `PORT` автоматически, приложение слушает `0.0.0.0`.
+
+### Подключение Render MCP без секретов в репозитории
+
+`opencode.json` описывает удалённый MCP-сервер Render:
+
+```json
+{
+  "mcp": {
+    "render": {
+      "type": "remote",
+      "url": "https://mcp.render.com/mcp",
+      "headers": { "Authorization": "Bearer {env:RENDER_API_KEY}" }
+    }
+  }
+}
+```
+
+В конфиге нет ключа, токена и данных сессии: opencode подставляет значение из переменной окружения `RENDER_API_KEY`.
+
+Шаги входа:
+
+1. В Render Dashboard откройте **Account Settings → API Keys** и создайте ключ с доступом только к нужному workspace.
+2. Задайте переменную в Shell до запуска opencode:
+   ```bash
+   export RENDER_API_KEY='...'
+   ```
+   либо в PowerShell:
+   ```powershell
+   $env:RENDER_API_KEY = '...'
+   ```
+   Не добавляйте значение в `.env`, который попадает в git.
+3. Перезапустите opencode: конфиг читается только при старте. Проверьте соединение вызовом `list_workspaces`, затем задайте рабочий workspace (например, `Set my Render workspace to <name>`).
+4. В редакторах с поддержкой OAuth (Claude Code, Codex, Cursor, Claude Desktop) можно войти через браузер без API-ключа: официальный Render plugin/connector, URL `https://mcp.render.com/mcp`. Для opencode используется вариант с переменной окружения выше.
+
+### Хранение данных
+
+Приложение использует SQLite по пути `/data/booking.db` (переменная `DATABASE_PATH` в образе). Без подключённого постоянного диска `/data` находится в записываемом слое контейнера: при перезапуске или редеплое сервиса данные удаляются. Чтобы записи сохранялись, подключите Render Persistent Disk к `/data` (доступно на платных планах) и оставьте `DATABASE_PATH=/data/booking.db` без изменений.
+
 ## Проверки и стабильность e2e
 
 - `mise run check` — быстрая проверка без браузера: контракт, линт, типы, сборка и тесты.
